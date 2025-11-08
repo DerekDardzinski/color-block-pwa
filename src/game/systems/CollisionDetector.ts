@@ -10,7 +10,7 @@ export interface CollisionInfo {
 }
 
 export class CollisionDetector {
-  private grid: Grid;
+  public grid: Grid;
   private obstacles: GridPosition[];
 
   constructor(grid: Grid, _blocks: Block[], obstacles: GridPosition[] = []) {
@@ -64,7 +64,7 @@ export class CollisionDetector {
   }
 
   /**
-   * Get valid drag position with collision resolution and sliding
+   * Get valid drag position with collision detection (no pass-through)
    */
   public getValidDragPosition(
     block: Block,
@@ -73,30 +73,12 @@ export class CollisionDetector {
     currentX: number,
     currentY: number
   ): { x: number; y: number } {
-    // Try desired position first
+    // Try desired position
     if (this.canBlockMoveTo(block, desiredX, desiredY)) {
       return { x: desiredX, y: desiredY };
     }
 
-    // Calculate delta movement
-    const deltaX = desiredX - currentX;
-    const deltaY = desiredY - currentY;
-
-    // Try X-only movement (horizontal sliding)
-    const xOnlyX = currentX + deltaX;
-    const xOnlyY = currentY;
-    if (Math.abs(deltaX) > 0 && this.canBlockMoveTo(block, xOnlyX, xOnlyY)) {
-      return { x: xOnlyX, y: xOnlyY };
-    }
-
-    // Try Y-only movement (vertical sliding)
-    const yOnlyX = currentX;
-    const yOnlyY = currentY + deltaY;
-    if (Math.abs(deltaY) > 0 && this.canBlockMoveTo(block, yOnlyX, yOnlyY)) {
-      return { x: yOnlyX, y: yOnlyY };
-    }
-
-    // Can't move, stay at current position
+    // If collision detected, stop all movement
     return { x: currentX, y: currentY };
   }
 
@@ -167,25 +149,43 @@ export class CollisionDetector {
   public checkExitCondition(block: Block, exitZones: ExitZone[]): ExitZone | null {
     const blockBounds = block.getWorldBounds();
 
+    console.log('Checking exit for block:', {
+      color: block.color,
+      bounds: blockBounds,
+      gridPos: block.gridPosition
+    });
+
     for (const exit of exitZones) {
+      console.log('  Checking exit:', {
+        color: exit.color,
+        side: exit.side
+      });
+
       // Color must match
       if (exit.color.toLowerCase() !== block.color.toLowerCase()) {
+        console.log('    ❌ Color mismatch');
         continue;
       }
 
       // Block must fit within exit bounds
-      if (!exit.canBlockFit(blockBounds)) {
+      const fits = exit.canBlockFit(blockBounds);
+      console.log('    Block fits:', fits);
+      if (!fits) {
         continue;
       }
 
-      // Block must be aligned with exit
-      if (!exit.isBlockAligned(blockBounds, this.grid.cellSize * 0.1)) {
+      // Block must be aligned with exit (use larger tolerance)
+      const aligned = exit.isBlockAligned(blockBounds, this.grid.cellSize * 0.5);
+      console.log('    Block aligned:', aligned);
+      if (!aligned) {
         continue;
       }
 
+      console.log('    ✅ Exit condition met!');
       return exit;
     }
 
+    console.log('  No valid exit found');
     return null;
   }
 

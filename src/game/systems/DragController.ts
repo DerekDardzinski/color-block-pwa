@@ -125,7 +125,38 @@ export class DragController {
     block.endDrag();
     this.activeBlock = null;
 
-    // Find nearest valid grid position
+    // FIRST: Check if block is at a valid exit (before snapping to grid)
+    // We need to temporarily update the block's grid position based on current world position
+    const currentGridPos = this.collisionDetector.grid.worldToGrid(block.x, block.y);
+    const savedGridPos = { ...block.gridPosition };
+    block.gridPosition = currentGridPos; // Temporarily update for exit check
+
+    const exitZone = this.collisionDetector.checkExitCondition(block, this.exitZones);
+
+    if (exitZone) {
+      // Block is exiting - remove it
+      block.removeBlock();
+
+      // Remove from blocks array
+      const index = this.blocks.indexOf(block);
+      if (index > -1) {
+        this.blocks.splice(index, 1);
+      }
+
+      // Update collision detector
+      this.collisionDetector.setBlocks(this.blocks);
+
+      // Trigger callback
+      if (this.onBlockRemoved) {
+        this.onBlockRemoved(block);
+      }
+      return;
+    }
+
+    // Restore saved grid position
+    block.gridPosition = savedGridPos;
+
+    // SECOND: If not exiting, find nearest valid grid position and snap to it
     const validGridPos = this.collisionDetector.findNearestValidGridPosition(
       block,
       block.x,
@@ -136,30 +167,9 @@ export class DragController {
       // Snap to valid grid position
       block.setGridPosition(validGridPos.row, validGridPos.col);
 
-      // Check if block is at a valid exit
-      const exitZone = this.collisionDetector.checkExitCondition(block, this.exitZones);
-      if (exitZone) {
-        // Remove block
-        block.removeBlock();
-
-        // Remove from blocks array
-        const index = this.blocks.indexOf(block);
-        if (index > -1) {
-          this.blocks.splice(index, 1);
-        }
-
-        // Update collision detector
-        this.collisionDetector.setBlocks(this.blocks);
-
-        // Trigger callback
-        if (this.onBlockRemoved) {
-          this.onBlockRemoved(block);
-        }
-      } else {
-        // Normal move - trigger callback
-        if (this.onMoveComplete) {
-          this.onMoveComplete();
-        }
+      // Normal move - trigger callback
+      if (this.onMoveComplete) {
+        this.onMoveComplete();
       }
     } else {
       // No valid position found, return to last valid position

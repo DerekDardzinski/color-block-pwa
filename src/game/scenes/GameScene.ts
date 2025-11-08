@@ -68,16 +68,23 @@ export class GameScene extends Phaser.Scene {
     const gridMaxWidth = gameWidth * 0.95;
     const gridMaxHeight = gameHeight - uiTopHeight - uiBottomHeight;
 
-    // Create grid
+    // Create grid (with temporary position)
     this.grid = new Grid({
       scene: this,
       rows: levelData.gridSize.rows,
       cols: levelData.gridSize.cols,
-      x: (gameWidth - gridMaxWidth) / 2,
-      y: uiTopHeight + (gridMaxHeight - gridMaxHeight * 0.95) / 2,
+      x: 0,
+      y: 0,
       maxWidth: gridMaxWidth,
       maxHeight: gridMaxHeight * 0.95
     });
+
+    // Calculate actual grid dimensions and center it
+    const actualGridWidth = this.grid.cols * this.grid.cellSize + this.grid.wallThickness * 2;
+    const actualGridHeight = this.grid.rows * this.grid.cellSize + this.grid.wallThickness * 2;
+
+    this.grid.x = (gameWidth - actualGridWidth) / 2;
+    this.grid.y = uiTopHeight + (gridMaxHeight - actualGridHeight) / 2;
 
     // Render grid
     this.grid.render();

@@ -120,7 +120,7 @@ export class ExitZone {
    * Check if a block is properly aligned with this exit
    * (i.e., positioned at the perimeter edge)
    */
-  public isBlockAligned(blockBounds: Bounds, tolerance: number = 5): boolean {
+  public isBlockAligned(blockBounds: Bounds, tolerance: number = 10): boolean {
     const exitBounds = this.getWorldBounds();
 
     switch (this.side) {

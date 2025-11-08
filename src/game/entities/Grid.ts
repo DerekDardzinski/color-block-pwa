@@ -49,9 +49,16 @@ export class Grid {
     this.x = config.x;
     this.y = config.y;
 
-    // Calculate responsive cell size
+    // Calculate wall thickness and cell size properly
+    // We need to account for walls in the calculation
+    const tempCellSize = Math.min(
+      config.maxWidth / (this.cols + 0.67),
+      config.maxHeight / (this.rows + 0.67)
+    );
+    this.wallThickness = Math.floor(tempCellSize / 3);
+
+    // Now calculate actual cell size with wall thickness known
     this.cellSize = this.calculateCellSize(config.maxWidth, config.maxHeight);
-    this.wallThickness = Math.floor(this.cellSize / 3);
 
     // Initialize cell occupancy tracking
     this.cells = [];
@@ -68,8 +75,8 @@ export class Grid {
 
   private calculateCellSize(maxWidth: number, maxHeight: number): number {
     // Account for wall thickness on all sides
-    const availableWidth = maxWidth - (this.wallThickness || 0) * 2;
-    const availableHeight = maxHeight - (this.wallThickness || 0) * 2;
+    const availableWidth = maxWidth - this.wallThickness * 2;
+    const availableHeight = maxHeight - this.wallThickness * 2;
 
     // Calculate cell size based on grid dimensions
     const cellWidth = availableWidth / this.cols;

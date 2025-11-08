@@ -60,11 +60,23 @@ export class Block extends Phaser.GameObjects.Container {
     // Add to scene
     config.scene.add.existing(this);
 
-    // Enable interactive
-    this.setSize(this.cellSize, this.cellSize);
+    // Enable interactive with accurate hit area (only actual block cells, not bounding box)
+    const maxCol = Math.max(...this.shapeOffsets.map(o => o.col));
+    const maxRow = Math.max(...this.shapeOffsets.map(o => o.row));
+    const hitAreaWidth = (maxCol + 1) * this.cellSize;
+    const hitAreaHeight = (maxRow + 1) * this.cellSize;
+
+    this.setSize(hitAreaWidth, hitAreaHeight);
     this.setInteractive(
-      new Phaser.Geom.Rectangle(0, 0, this.cellSize * 4, this.cellSize * 4),
-      Phaser.Geom.Rectangle.Contains
+      new Phaser.Geom.Rectangle(0, 0, hitAreaWidth, hitAreaHeight),
+      (_hitArea: Phaser.Geom.Rectangle, x: number, y: number) => {
+        // Check if x,y falls within any of the actual shape cells
+        const col = Math.floor(x / this.cellSize);
+        const row = Math.floor(y / this.cellSize);
+        return this.shapeOffsets.some(offset =>
+          offset.row === row && offset.col === col
+        );
+      }
     );
 
     // Mark cells as occupied
@@ -99,48 +111,59 @@ export class Block extends Phaser.GameObjects.Container {
   }
 
   /**
-   * Render the block with LEGO-style studs
+   * Render the block as a continuous LEGO-style shape
    */
   private renderBlock(): void {
     this.graphics.clear();
 
     const cellSize = this.cellSize;
-    const cornerRadius = cellSize * 0.1;
+    const cornerRadius = cellSize * 0.15;
     const baseColor = this.getColorValue();
     const darkColor = this.getDarkerColor(baseColor);
     const lightColor = this.getLighterColor(baseColor);
     const studRadius = cellSize * 0.12;
 
-    // Render each cell of the block
+    // Draw each cell WITHOUT gaps to create continuous shape
     this.shapeOffsets.forEach(offset => {
       const x = offset.col * cellSize;
       const y = offset.row * cellSize;
 
-      // Draw main cell body with rounded corners
+      // Draw main cell body (no gaps - cells touch seamlessly)
       this.graphics.fillStyle(baseColor, 1);
-      this.graphics.fillRoundedRect(x + 2, y + 2, cellSize - 4, cellSize - 4, cornerRadius);
+      this.graphics.fillRoundedRect(x, y, cellSize, cellSize, cornerRadius);
+    });
 
-      // Add shadow at bottom
-      this.graphics.fillStyle(darkColor, 0.3);
+    // Add shadow and highlight on top of continuous shape
+    this.shapeOffsets.forEach(offset => {
+      const x = offset.col * cellSize;
+      const y = offset.row * cellSize;
+
+      // Add shadow at bottom of each cell
+      this.graphics.fillStyle(darkColor, 0.2);
       this.graphics.fillRoundedRect(
         x + 2,
         y + cellSize - cellSize * 0.2,
         cellSize - 4,
         cellSize * 0.15,
-        cornerRadius
+        cornerRadius * 0.5
       );
 
-      // Add highlight at top
-      this.graphics.fillStyle(0xffffff, 0.3);
+      // Add highlight at top of each cell
+      this.graphics.fillStyle(0xffffff, 0.25);
       this.graphics.fillRoundedRect(
-        x + 4,
-        y + 4,
-        cellSize - 8,
+        x + 2,
+        y + 2,
+        cellSize - 4,
         cellSize * 0.2,
-        cornerRadius
+        cornerRadius * 0.5
       );
+    });
 
-      // Draw 2x2 array of studs
+    // Draw LEGO studs on top
+    this.shapeOffsets.forEach(offset => {
+      const x = offset.col * cellSize;
+      const y = offset.row * cellSize;
+
       const studSpacing = cellSize / 3;
       const studOffsetX = studSpacing;
       const studOffsetY = studSpacing;
