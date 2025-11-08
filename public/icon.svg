@@ -1,0 +1,54 @@
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="512" height="512" fill="#4285f4" rx="80"/>
+
+  <!-- Grid outline -->
+  <rect x="106" y="106" width="300" height="300" fill="#34495e" rx="20"/>
+  <rect x="116" y="116" width="280" height="280" fill="#2c3e50" rx="15"/>
+
+  <!-- Colorful blocks representing game pieces -->
+  <!-- Blue block (top-left) -->
+  <g>
+    <rect x="136" y="136" width="60" height="60" fill="#3498db" rx="6"/>
+    <circle cx="151" cy="151" r="5" fill="#5dade2"/>
+    <circle cx="181" cy="151" r="5" fill="#5dade2"/>
+    <circle cx="151" cy="181" r="5" fill="#5dade2"/>
+    <circle cx="181" cy="181" r="5" fill="#5dade2"/>
+  </g>
+
+  <!-- Red block (top-right) -->
+  <g>
+    <rect x="316" y="136" width="60" height="60" fill="#e74c3c" rx="6"/>
+    <circle cx="331" cy="151" r="5" fill="#ec7063"/>
+    <circle cx="361" cy="151" r="5" fill="#ec7063"/>
+    <circle cx="331" cy="181" r="5" fill="#ec7063"/>
+    <circle cx="361" cy="181" r="5" fill="#ec7063"/>
+  </g>
+
+  <!-- Green block (bottom-left) -->
+  <g>
+    <rect x="136" y="316" width="60" height="60" fill="#2ecc71" rx="6"/>
+    <circle cx="151" cy="331" r="5" fill="#58d68d"/>
+    <circle cx="181" cy="331" r="5" fill="#58d68d"/>
+    <circle cx="151" cy="361" r="5" fill="#58d68d"/>
+    <circle cx="181" cy="361" r="5" fill="#58d68d"/>
+  </g>
+
+  <!-- Yellow block (bottom-right) -->
+  <g>
+    <rect x="316" y="316" width="60" height="60" fill="#f39c12" rx="6"/>
+    <circle cx="331" cy="331" r="5" fill="#f8c471"/>
+    <circle cx="361" cy="331" r="5" fill="#f8c471"/>
+    <circle cx="331" cy="361" r="5" fill="#f8c471"/>
+    <circle cx="361" cy="361" r="5" fill="#f8c471"/>
+  </g>
+
+  <!-- Center purple block -->
+  <g>
+    <rect x="226" y="226" width="60" height="60" fill="#9b59b6" rx="6"/>
+    <circle cx="241" cy="241" r="5" fill="#bb8fce"/>
+    <circle cx="271" cy="241" r="5" fill="#bb8fce"/>
+    <circle cx="241" cy="271" r="5" fill="#bb8fce"/>
+    <circle cx="271" cy="271" r="5" fill="#bb8fce"/>
+  </g>
+</svg>
