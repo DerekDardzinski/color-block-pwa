@@ -64,7 +64,7 @@ export class CollisionDetector {
   }
 
   /**
-   * Get valid drag position with collision detection (no pass-through)
+   * Get valid drag position with swept collision detection (prevents pass-through)
    */
   public getValidDragPosition(
     block: Block,
@@ -73,13 +73,40 @@ export class CollisionDetector {
     currentX: number,
     currentY: number
   ): { x: number; y: number } {
-    // Try desired position
-    if (this.canBlockMoveTo(block, desiredX, desiredY)) {
-      return { x: desiredX, y: desiredY };
+    // Calculate movement delta
+    const dx = desiredX - currentX;
+    const dy = desiredY - currentY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // If not moving, return current position
+    if (distance < 0.1) {
+      return { x: currentX, y: currentY };
     }
 
-    // If collision detected, stop all movement
-    return { x: currentX, y: currentY };
+    // Step size for swept collision detection (smaller = more accurate but slower)
+    const stepSize = Math.min(this.grid.cellSize * 0.5, distance);
+    const steps = Math.ceil(distance / stepSize);
+
+    // Check intermediate positions along the path
+    let lastValidX = currentX;
+    let lastValidY = currentY;
+
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const testX = currentX + dx * t;
+      const testY = currentY + dy * t;
+
+      if (this.canBlockMoveTo(block, testX, testY)) {
+        lastValidX = testX;
+        lastValidY = testY;
+      } else {
+        // Hit a collision, return last valid position
+        return { x: lastValidX, y: lastValidY };
+      }
+    }
+
+    // No collision detected along the path
+    return { x: desiredX, y: desiredY };
   }
 
   /**

@@ -24,6 +24,7 @@ export class Block extends Phaser.GameObjects.Container {
   private grid: Grid;
   private cellSize: number;
   private graphics: Phaser.GameObjects.Graphics;
+  private shapeOriginOffset: CellOffset; // Offset from gridPosition to actual top-left cell
 
   // Color string to hex mapping
   private static colorMap: { [key: string]: number } = {
@@ -38,7 +39,16 @@ export class Block extends Phaser.GameObjects.Container {
   };
 
   constructor(config: BlockConfig) {
-    const worldPos = config.grid.gridToWorld(config.gridPosition.row, config.gridPosition.col);
+    // Get shape offsets and find the minimum to normalize
+    const rawOffsets = getShapeOffsets(config.shape);
+    const minRow = Math.min(...rawOffsets.map(o => o.row));
+    const minCol = Math.min(...rawOffsets.map(o => o.col));
+
+    // Position container at the actual top-left cell position (accounting for shape offset)
+    const worldPos = config.grid.gridToWorld(
+      config.gridPosition.row + minRow,
+      config.gridPosition.col + minCol
+    );
     super(config.scene, worldPos.x, worldPos.y);
 
     this.id = config.id;
@@ -48,7 +58,15 @@ export class Block extends Phaser.GameObjects.Container {
     this.lastValidPosition = { ...config.gridPosition };
     this.grid = config.grid;
     this.cellSize = config.grid.cellSize;
-    this.shapeOffsets = getShapeOffsets(config.shape);
+
+    // Store the shape origin offset for later use
+    this.shapeOriginOffset = { row: minRow, col: minCol };
+
+    // Normalize offsets so they start from (0, 0) relative to container
+    this.shapeOffsets = rawOffsets.map(offset => ({
+      row: offset.row - minRow,
+      col: offset.col - minCol
+    }));
 
     // Create graphics for rendering
     this.graphics = config.scene.add.graphics();
@@ -61,23 +79,29 @@ export class Block extends Phaser.GameObjects.Container {
     config.scene.add.existing(this);
 
     // Enable interactive with accurate hit area (only actual block cells, not bounding box)
-    const maxCol = Math.max(...this.shapeOffsets.map(o => o.col));
-    const maxRow = Math.max(...this.shapeOffsets.map(o => o.row));
-    const hitAreaWidth = (maxCol + 1) * this.cellSize;
-    const hitAreaHeight = (maxRow + 1) * this.cellSize;
+    // After normalization, shapeOffsets always start at (0, 0)
+    const hitMaxCol = Math.max(...this.shapeOffsets.map(o => o.col));
+    const hitMaxRow = Math.max(...this.shapeOffsets.map(o => o.row));
+    const hitAreaWidth = (hitMaxCol + 1) * this.cellSize;
+    const hitAreaHeight = (hitMaxRow + 1) * this.cellSize;
 
     this.setSize(hitAreaWidth, hitAreaHeight);
     this.setInteractive(
       new Phaser.Geom.Rectangle(0, 0, hitAreaWidth, hitAreaHeight),
-      (_hitArea: Phaser.Geom.Rectangle, x: number, y: number) => {
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    // Override hitTestPointer for precise shape-based detection
+    if (this.input) {
+      this.input.hitAreaCallback = (_hitArea: Phaser.Geom.Rectangle, x: number, y: number) => {
         // Check if x,y falls within any of the actual shape cells
         const col = Math.floor(x / this.cellSize);
         const row = Math.floor(y / this.cellSize);
         return this.shapeOffsets.some(offset =>
           offset.row === row && offset.col === col
         );
-      }
-    );
+      };
+    }
 
     // Mark cells as occupied
     this.updateGridOccupancy();
@@ -117,47 +141,28 @@ export class Block extends Phaser.GameObjects.Container {
     this.graphics.clear();
 
     const cellSize = this.cellSize;
-    const cornerRadius = cellSize * 0.15;
+    const cornerRadius = cellSize * 0.2;
     const baseColor = this.getColorValue();
     const darkColor = this.getDarkerColor(baseColor);
     const lightColor = this.getLighterColor(baseColor);
     const studRadius = cellSize * 0.12;
 
-    // Draw each cell WITHOUT gaps to create continuous shape
-    this.shapeOffsets.forEach(offset => {
-      const x = offset.col * cellSize;
-      const y = offset.row * cellSize;
+    // Draw continuous polygon shape
+    this.drawContinuousShape(baseColor, cornerRadius);
 
-      // Draw main cell body (no gaps - cells touch seamlessly)
-      this.graphics.fillStyle(baseColor, 1);
-      this.graphics.fillRoundedRect(x, y, cellSize, cellSize, cornerRadius);
-    });
+    // Add subtle shadow gradient at bottom
+    const maxRow = Math.max(...this.shapeOffsets.map(o => o.row));
+    const maxCol = Math.max(...this.shapeOffsets.map(o => o.col));
+    const width = (maxCol + 1) * cellSize;
+    const height = (maxRow + 1) * cellSize;
 
-    // Add shadow and highlight on top of continuous shape
-    this.shapeOffsets.forEach(offset => {
-      const x = offset.col * cellSize;
-      const y = offset.row * cellSize;
+    // Bottom shadow gradient
+    this.graphics.fillGradientStyle(darkColor, darkColor, 0x000000, 0x000000, 0.15, 0.15, 0, 0.05);
+    this.graphics.fillRect(0, height * 0.75, width, height * 0.25);
 
-      // Add shadow at bottom of each cell
-      this.graphics.fillStyle(darkColor, 0.2);
-      this.graphics.fillRoundedRect(
-        x + 2,
-        y + cellSize - cellSize * 0.2,
-        cellSize - 4,
-        cellSize * 0.15,
-        cornerRadius * 0.5
-      );
-
-      // Add highlight at top of each cell
-      this.graphics.fillStyle(0xffffff, 0.25);
-      this.graphics.fillRoundedRect(
-        x + 2,
-        y + 2,
-        cellSize - 4,
-        cellSize * 0.2,
-        cornerRadius * 0.5
-      );
-    });
+    // Top highlight
+    this.graphics.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, 0.3, 0.3, 0.1, 0.1);
+    this.graphics.fillRect(cornerRadius, cornerRadius, width - cornerRadius * 2, height * 0.15);
 
     // Draw LEGO studs on top
     this.shapeOffsets.forEach(offset => {
@@ -195,12 +200,143 @@ export class Block extends Phaser.GameObjects.Container {
   }
 
   /**
+   * Draw the shape as a continuous polygon with rounded outer edges
+   */
+  private drawContinuousShape(color: number, cornerRadius: number): void {
+    const cellSize = this.cellSize;
+
+    // Create a cell occupancy map for quick lookup
+    const cellMap = new Set(this.shapeOffsets.map(o => `${o.row},${o.col}`));
+    const hasCell = (row: number, col: number) => cellMap.has(`${row},${col}`);
+
+    // Build list of all edge segments
+    interface EdgeSegment {
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      type: 'horizontal' | 'vertical';
+    }
+
+    const edges: EdgeSegment[] = [];
+
+    this.shapeOffsets.forEach(({ row, col }) => {
+      const x = col * cellSize;
+      const y = row * cellSize;
+
+      // Top edge (if no cell above)
+      if (!hasCell(row - 1, col)) {
+        edges.push({ x1: x, y1: y, x2: x + cellSize, y2: y, type: 'horizontal' });
+      }
+      // Bottom edge (if no cell below)
+      if (!hasCell(row + 1, col)) {
+        edges.push({ x1: x, y1: y + cellSize, x2: x + cellSize, y2: y + cellSize, type: 'horizontal' });
+      }
+      // Left edge (if no cell to left)
+      if (!hasCell(row, col - 1)) {
+        edges.push({ x1: x, y1: y, x2: x, y2: y + cellSize, type: 'vertical' });
+      }
+      // Right edge (if no cell to right)
+      if (!hasCell(row, col + 1)) {
+        edges.push({ x1: x + cellSize, y1: y, x2: x + cellSize, y2: y + cellSize, type: 'vertical' });
+      }
+    });
+
+    // For now, use a simpler approach: draw filled rectangles then merge
+    // This creates the continuous shape effect without complex path tracing
+    this.graphics.fillStyle(color, 1);
+    this.graphics.beginPath();
+
+    this.shapeOffsets.forEach(({ row, col }) => {
+      const x = col * cellSize;
+      const y = row * cellSize;
+      this.graphics.fillRect(x, y, cellSize, cellSize);
+    });
+
+    // Draw rounded corners at outer corners only
+    this.shapeOffsets.forEach(({ row, col }) => {
+      const x = col * cellSize;
+      const y = row * cellSize;
+
+      // Check if this cell has an outer corner
+      const hasLeft = hasCell(row, col - 1);
+      const hasRight = hasCell(row, col + 1);
+      const hasTop = hasCell(row - 1, col);
+      const hasBottom = hasCell(row + 1, col);
+      const hasTopLeft = hasCell(row - 1, col - 1);
+      const hasTopRight = hasCell(row - 1, col + 1);
+      const hasBottomLeft = hasCell(row + 1, col - 1);
+      const hasBottomRight = hasCell(row + 1, col + 1);
+
+      // Draw rounded corners at outer convex corners
+      if (!hasTop && !hasLeft) {
+        // Top-left outer corner
+        this.graphics.fillStyle(color, 1);
+        this.graphics.beginPath();
+        this.graphics.arc(x + cornerRadius, y + cornerRadius, cornerRadius, Math.PI, Math.PI * 1.5);
+        this.graphics.lineTo(x + cornerRadius, y + cornerRadius);
+        this.graphics.closePath();
+        this.graphics.fillPath();
+      }
+
+      if (!hasTop && !hasRight) {
+        // Top-right outer corner
+        this.graphics.fillStyle(color, 1);
+        this.graphics.beginPath();
+        this.graphics.arc(x + cellSize - cornerRadius, y + cornerRadius, cornerRadius, Math.PI * 1.5, 0);
+        this.graphics.lineTo(x + cellSize - cornerRadius, y + cornerRadius);
+        this.graphics.closePath();
+        this.graphics.fillPath();
+      }
+
+      if (!hasBottom && !hasLeft) {
+        // Bottom-left outer corner
+        this.graphics.fillStyle(color, 1);
+        this.graphics.beginPath();
+        this.graphics.arc(x + cornerRadius, y + cellSize - cornerRadius, cornerRadius, Math.PI * 0.5, Math.PI);
+        this.graphics.lineTo(x + cornerRadius, y + cellSize - cornerRadius);
+        this.graphics.closePath();
+        this.graphics.fillPath();
+      }
+
+      if (!hasBottom && !hasRight) {
+        // Bottom-right outer corner
+        this.graphics.fillStyle(color, 1);
+        this.graphics.beginPath();
+        this.graphics.arc(x + cellSize - cornerRadius, y + cellSize - cornerRadius, cornerRadius, 0, Math.PI * 0.5);
+        this.graphics.lineTo(x + cellSize - cornerRadius, y + cellSize - cornerRadius);
+        this.graphics.closePath();
+        this.graphics.fillPath();
+      }
+
+      // Fill in inner concave corners
+      if (hasTop && hasLeft && !hasTopLeft) {
+        this.graphics.fillStyle(color, 1);
+        this.graphics.fillCircle(x, y, cornerRadius * 0.5);
+      }
+      if (hasTop && hasRight && !hasTopRight) {
+        this.graphics.fillStyle(color, 1);
+        this.graphics.fillCircle(x + cellSize, y, cornerRadius * 0.5);
+      }
+      if (hasBottom && hasLeft && !hasBottomLeft) {
+        this.graphics.fillStyle(color, 1);
+        this.graphics.fillCircle(x, y + cellSize, cornerRadius * 0.5);
+      }
+      if (hasBottom && hasRight && !hasBottomRight) {
+        this.graphics.fillStyle(color, 1);
+        this.graphics.fillCircle(x + cellSize, y + cellSize, cornerRadius * 0.5);
+      }
+    });
+  }
+
+  /**
    * Get all grid cells this block occupies
    */
   public getOccupiedCells(): GridPosition[] {
+    // Add back the shape origin offset since shapeOffsets are normalized
     return this.shapeOffsets.map(offset => ({
-      row: this.gridPosition.row + offset.row,
-      col: this.gridPosition.col + offset.col
+      row: this.gridPosition.row + offset.row + this.shapeOriginOffset.row,
+      col: this.gridPosition.col + offset.col + this.shapeOriginOffset.col
     }));
   }
 
@@ -218,9 +354,10 @@ export class Block extends Phaser.GameObjects.Container {
       maxCol = Math.max(maxCol, offset.col);
     });
 
+    // Add back shape origin offset since offsets are normalized
     const topLeft = this.grid.gridToWorld(
-      this.gridPosition.row + minRow,
-      this.gridPosition.col + minCol
+      this.gridPosition.row + minRow + this.shapeOriginOffset.row,
+      this.gridPosition.col + minCol + this.shapeOriginOffset.col
     );
 
     return {
@@ -257,7 +394,11 @@ export class Block extends Phaser.GameObjects.Container {
    */
   public setGridPosition(row: number, col: number): void {
     this.gridPosition = { row, col };
-    const worldPos = this.grid.gridToWorld(row, col);
+    // Position container at actual top-left cell (accounting for shape offset)
+    const worldPos = this.grid.gridToWorld(
+      row + this.shapeOriginOffset.row,
+      col + this.shapeOriginOffset.col
+    );
     this.setWorldPosition(worldPos.x, worldPos.y);
     this.updateGridOccupancy();
     this.lastValidPosition = { row, col };
