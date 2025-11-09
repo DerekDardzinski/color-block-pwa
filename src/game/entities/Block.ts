@@ -369,6 +369,29 @@ export class Block extends Phaser.GameObjects.Container {
   }
 
   /**
+   * Get world-space bounding boxes for each cell at a specific position
+   * Used for precise collision detection during dragging
+   */
+  public getWorldCellPositionsAt(worldX: number, worldY: number): Bounds[] {
+    const cellBounds: Bounds[] = [];
+
+    // For each cell in the shape, calculate its world bounds
+    this.shapeOffsets.forEach(offset => {
+      const cellWorldX = worldX + offset.col * this.cellSize;
+      const cellWorldY = worldY + offset.row * this.cellSize;
+
+      cellBounds.push({
+        left: cellWorldX,
+        top: cellWorldY,
+        right: cellWorldX + this.cellSize,
+        bottom: cellWorldY + this.cellSize
+      });
+    });
+
+    return cellBounds;
+  }
+
+  /**
    * Update grid occupancy data
    */
   public updateGridOccupancy(): void {

@@ -27,33 +27,74 @@ export class CollisionDetector {
 
   /**
    * Check if a block can move to a position (world coordinates)
+   * Uses AABB + world-space cell overlap detection for accurate collision
+   *
+   * TODO: Future optimization - Replace grid-based block iteration with spatial hash
+   * for O(1) lookup instead of checking 3x3 grid cells per dragged cell.
    */
   public canBlockMoveTo(block: Block, worldX: number, worldY: number): boolean {
-    const gridPos = this.grid.worldToGrid(worldX, worldY);
+    const COLLISION_BUFFER = 2; // pixels of tolerance for smooth dragging
 
-    // Check all cells the block would occupy
-    for (const offset of block.shapeOffsets) {
-      const checkRow = gridPos.row + offset.row;
-      const checkCol = gridPos.col + offset.col;
+    // Get world-space cell bounds for the dragged block at desired position
+    const draggedCells = block.getWorldCellPositionsAt(worldX, worldY);
 
-      // Out of bounds?
-      if (!this.grid.isInBounds(checkRow, checkCol)) {
-        return false;
+    // Phase 1: Calculate AABB for dragged block
+    const draggedAABB = this.calculateAABB(draggedCells);
+
+    // Phase 2: Check against all other blocks (via grid occupancy)
+    const checkedBlocks = new Set<any>();
+
+    for (const draggedCell of draggedCells) {
+      // Convert cell center to grid position to find nearby blocks
+      const centerX = (draggedCell.left + draggedCell.right) / 2;
+      const centerY = (draggedCell.top + draggedCell.bottom) / 2;
+      const gridPos = this.grid.worldToGrid(centerX, centerY);
+
+      // Check if this position is out of bounds
+      if (!this.grid.isInBounds(gridPos.row, gridPos.col)) {
+        return false; // Can't move out of bounds
       }
 
-      // Check if cell is occupied
-      const occupant = this.grid.getCellOccupant(checkRow, checkCol);
-      if (occupant !== null && occupant !== block) {
-        return false;
-      }
+      // Check grid occupancy in a small area around this cell
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const checkRow = gridPos.row + dr;
+          const checkCol = gridPos.col + dc;
 
-      // Check obstacles
-      if (this.isObstacle(checkRow, checkCol)) {
-        return false;
+          if (!this.grid.isInBounds(checkRow, checkCol)) continue;
+
+          const occupant = this.grid.getCellOccupant(checkRow, checkCol);
+          if (occupant && occupant !== block && !checkedBlocks.has(occupant)) {
+            checkedBlocks.add(occupant);
+
+            // Do AABB test first (fast rejection)
+            const occupantAABB = occupant.getWorldBounds();
+            if (!this.aabbsOverlap(draggedAABB, occupantAABB)) {
+              continue; // No overlap, skip cell-level check
+            }
+
+            // AABB overlap detected - check cell-level collision
+            const occupantCells = occupant.getWorldCellPositionsAt(occupant.x, occupant.y);
+            if (this.cellsOverlap(draggedCells, occupantCells, COLLISION_BUFFER)) {
+              return false; // Collision detected
+            }
+          }
+
+          // Check obstacles
+          if (this.isObstacle(checkRow, checkCol)) {
+            // Get obstacle cell bounds
+            const obstacleCell = this.getObstacleCellBounds(checkRow, checkCol);
+
+            // Check if dragged cell overlaps with obstacle cell (with buffer)
+            if (this.boundsOverlap(draggedCell, obstacleCell, COLLISION_BUFFER)) {
+              return false; // Collision with obstacle
+            }
+          }
+        }
       }
     }
 
-    return true;
+    return true; // No collision detected
   }
 
   /**
@@ -61,6 +102,74 @@ export class CollisionDetector {
    */
   private isObstacle(row: number, col: number): boolean {
     return this.obstacles.some(obs => obs.row === row && obs.col === col);
+  }
+
+  /**
+   * Calculate AABB (Axis-Aligned Bounding Box) from array of cell bounds
+   */
+  private calculateAABB(cells: Bounds[]): Bounds {
+    let minLeft = Infinity, minTop = Infinity;
+    let maxRight = -Infinity, maxBottom = -Infinity;
+
+    cells.forEach(cell => {
+      minLeft = Math.min(minLeft, cell.left);
+      minTop = Math.min(minTop, cell.top);
+      maxRight = Math.max(maxRight, cell.right);
+      maxBottom = Math.max(maxBottom, cell.bottom);
+    });
+
+    return {
+      left: minLeft,
+      top: minTop,
+      right: maxRight,
+      bottom: maxBottom
+    };
+  }
+
+  /**
+   * Check if two AABBs overlap
+   */
+  private aabbsOverlap(a: Bounds, b: Bounds): boolean {
+    return !(a.right < b.left || a.left > b.right ||
+             a.bottom < b.top || a.top > b.bottom);
+  }
+
+  /**
+   * Check if any cells from two arrays overlap (with buffer tolerance)
+   */
+  private cellsOverlap(cells1: Bounds[], cells2: Bounds[], buffer: number): boolean {
+    for (const cell1 of cells1) {
+      for (const cell2 of cells2) {
+        if (this.boundsOverlap(cell1, cell2, buffer)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Check if two bounds overlap (with buffer tolerance)
+   * Buffer creates a gap for smooth dragging
+   */
+  private boundsOverlap(a: Bounds, b: Bounds, buffer: number): boolean {
+    return !(a.right - buffer < b.left + buffer ||
+             a.left + buffer > b.right - buffer ||
+             a.bottom - buffer < b.top + buffer ||
+             a.top + buffer > b.bottom - buffer);
+  }
+
+  /**
+   * Get world-space bounds for an obstacle cell
+   */
+  private getObstacleCellBounds(row: number, col: number): Bounds {
+    const worldPos = this.grid.gridToWorld(row, col);
+    return {
+      left: worldPos.x,
+      top: worldPos.y,
+      right: worldPos.x + this.grid.cellSize,
+      bottom: worldPos.y + this.grid.cellSize
+    };
   }
 
   /**
