@@ -88,13 +88,14 @@ export class Grid {
 
   /**
    * Convert world coordinates to grid position
+   * Uses Math.round to snap to nearest grid cell, not always floor down
    */
   public worldToGrid(worldX: number, worldY: number): GridPosition {
     const relativeX = worldX - (this.x + this.wallThickness);
     const relativeY = worldY - (this.y + this.wallThickness);
 
-    const col = Math.floor(relativeX / this.cellSize);
-    const row = Math.floor(relativeY / this.cellSize);
+    const col = Math.round(relativeX / this.cellSize);
+    const row = Math.round(relativeY / this.cellSize);
 
     return { row, col };
   }

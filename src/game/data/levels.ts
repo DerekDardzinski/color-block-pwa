@@ -40,6 +40,11 @@ export const LEVELS: LevelData[] = [
         color: 'red',
         shape: '1x2',
         startPosition: { row: 3, col: 4 }
+      },
+      {
+        color: 'yellow',
+        shape: 'Cross',
+        startPosition: { row: 0, col: 2 }
       }
     ],
     obstacles: [],

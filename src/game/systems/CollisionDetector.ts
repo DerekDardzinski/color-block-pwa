@@ -285,43 +285,25 @@ export class CollisionDetector {
   public checkExitCondition(block: Block, exitZones: ExitZone[]): ExitZone | null {
     const blockBounds = block.getWorldBounds();
 
-    console.log('Checking exit for block:', {
-      color: block.color,
-      bounds: blockBounds,
-      gridPos: block.gridPosition
-    });
-
     for (const exit of exitZones) {
-      console.log('  Checking exit:', {
-        color: exit.color,
-        side: exit.side
-      });
-
       // Color must match
       if (exit.color.toLowerCase() !== block.color.toLowerCase()) {
-        console.log('    ❌ Color mismatch');
         continue;
       }
 
       // Block must fit within exit bounds
-      const fits = exit.canBlockFit(blockBounds);
-      console.log('    Block fits:', fits);
-      if (!fits) {
+      if (!exit.canBlockFit(blockBounds)) {
         continue;
       }
 
       // Block must be aligned with exit (use larger tolerance)
-      const aligned = exit.isBlockAligned(blockBounds, this.grid.cellSize * 0.5);
-      console.log('    Block aligned:', aligned);
-      if (!aligned) {
+      if (!exit.isBlockAligned(blockBounds, this.grid.cellSize * 0.5)) {
         continue;
       }
 
-      console.log('    ✅ Exit condition met!');
       return exit;
     }
 
-    console.log('  No valid exit found');
     return null;
   }
 
