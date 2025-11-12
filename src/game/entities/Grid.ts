@@ -88,7 +88,7 @@ export class Grid {
 
   /**
    * Convert world coordinates to grid position
-   * Uses Math.round to snap to nearest grid cell, not always floor down
+   * Uses Math.round to determine which grid cell contains the point
    */
   public worldToGrid(worldX: number, worldY: number): GridPosition {
     const relativeX = worldX - (this.x + this.wallThickness);

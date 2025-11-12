@@ -354,9 +354,9 @@ export class Block extends Phaser.GameObjects.Container {
       const x = offset.col * cellSize;
       const y = offset.row * cellSize;
 
-      const studSpacing = cellSize / 3;
-      const studOffsetX = studSpacing;
-      const studOffsetY = studSpacing;
+      const studSpacing = cellSize / 2;
+      const studOffsetX = cellSize / 4;
+      const studOffsetY = cellSize / 4;
 
       for (let row = 0; row < 2; row++) {
         for (let col = 0; col < 2; col++) {
