@@ -104,7 +104,7 @@ export class DragController {
     const currentY = block.y;
 
     // Get valid position with collision detection and sliding
-    const validPos = this.collisionDetector.getValidDragPosition(
+    const validPos = this.collisionDetector.getValidDragPositionWithSliding(
       block,
       desiredX,
       desiredY,

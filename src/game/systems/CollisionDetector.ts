@@ -33,7 +33,7 @@ export class CollisionDetector {
    * for O(1) lookup instead of checking 3x3 grid cells per dragged cell.
    */
   public canBlockMoveTo(block: Block, worldX: number, worldY: number): boolean {
-    const COLLISION_BUFFER = 2; // pixels of tolerance for smooth dragging
+    const COLLISION_BUFFER = 2; // blocks should be flush with no overlap
 
     // Get world-space cell bounds for the dragged block at desired position
     const draggedCells = block.getWorldCellPositionsAt(worldX, worldY);
@@ -45,15 +45,23 @@ export class CollisionDetector {
     const checkedBlocks = new Set<any>();
 
     for (const draggedCell of draggedCells) {
+      // Check if entire cell is within playable bounds (not just center)
+      const playableLeft = this.grid.x + this.grid.wallThickness;
+      const playableTop = this.grid.y + this.grid.wallThickness;
+      const playableRight = playableLeft + (this.grid.cols * this.grid.cellSize);
+      const playableBottom = playableTop + (this.grid.rows * this.grid.cellSize);
+
+      if (draggedCell.left < playableLeft ||
+          draggedCell.right > playableRight ||
+          draggedCell.top < playableTop ||
+          draggedCell.bottom > playableBottom) {
+        return false; // Cell extends outside playable area
+      }
+
       // Convert cell center to grid position to find nearby blocks
       const centerX = (draggedCell.left + draggedCell.right) / 2;
       const centerY = (draggedCell.top + draggedCell.bottom) / 2;
       const gridPos = this.grid.worldToGrid(centerX, centerY);
-
-      // Check if this position is out of bounds
-      if (!this.grid.isInBounds(gridPos.row, gridPos.col)) {
-        return false; // Can't move out of bounds
-      }
 
       // Check grid occupancy in a small area around this cell
       for (let dr = -1; dr <= 1; dr++) {
@@ -216,6 +224,199 @@ export class CollisionDetector {
 
     // No collision detected along the path
     return { x: desiredX, y: desiredY };
+  }
+
+  /**
+   * Binary search to find exact collision point between valid and invalid positions
+   * Returns the closest valid position to the collision boundary
+   */
+  private binarySearchCollisionPoint(
+    block: Block,
+    validX: number,
+    validY: number,
+    invalidX: number,
+    invalidY: number,
+    tolerance: number
+  ): { x: number; y: number } {
+    let iterations = 0;
+    const maxIterations = 10;
+
+    while (iterations < maxIterations) {
+      const dx = invalidX - validX;
+      const dy = invalidY - validY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < tolerance) {
+        break;
+      }
+
+      const midX = (validX + invalidX) / 2;
+      const midY = (validY + invalidY) / 2;
+
+      if (this.canBlockMoveTo(block, midX, midY)) {
+        validX = midX;
+        validY = midY;
+      } else {
+        invalidX = midX;
+        invalidY = midY;
+      }
+
+      iterations++;
+    }
+
+    return { x: validX, y: validY };
+  }
+
+  /**
+   * Helper: Try swept movement along a path
+   * Returns last valid position and whether destination was reached
+   */
+  private trySweptMovement(
+    block: Block,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number
+  ): { lastValidX: number; lastValidY: number; reached: boolean } {
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // If not moving, return start position
+    if (distance < 0.1) {
+      return { lastValidX: startX, lastValidY: startY, reached: true };
+    }
+
+    // Step size for swept collision (same as current implementation)
+    const stepSize = Math.min(this.grid.cellSize * 0.5, distance);
+    const steps = Math.ceil(distance / stepSize);
+
+    let lastValidX = startX;
+    let lastValidY = startY;
+
+    // Test intermediate positions
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const testX = startX + dx * t;
+      const testY = startY + dy * t;
+
+      if (this.canBlockMoveTo(block, testX, testY)) {
+        lastValidX = testX;
+        lastValidY = testY;
+      } else {
+        // Hit collision - use binary search to find exact collision point
+        const refined = this.binarySearchCollisionPoint(
+          block,
+          lastValidX,
+          lastValidY,
+          testX,
+          testY,
+          0.5
+        );
+        return { lastValidX: refined.x, lastValidY: refined.y, reached: false };
+      }
+    }
+
+    // Reached destination without collision
+    return { lastValidX: endX, lastValidY: endY, reached: true };
+  }
+
+  /**
+   * Get valid drag position with axis-independent sliding support
+   * When diagonal movement is blocked, tries to slide along free axis
+   *
+   * Priority: Full movement > X-only > Y-only > No movement
+   */
+  public getValidDragPositionWithSliding(
+    block: Block,
+    desiredX: number,
+    desiredY: number,
+    currentX: number,
+    currentY: number
+  ): { x: number; y: number } {
+    // Calculate movement deltas
+    const dx = desiredX - currentX;
+    const dy = desiredY - currentY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // If not moving, return current position
+    if (distance < 0.1) {
+      return { x: currentX, y: currentY };
+    }
+
+    // PHASE 1: Try full diagonal movement first (best case)
+    const fullResult = this.trySweptMovement(block, currentX, currentY, desiredX, desiredY);
+    if (fullResult.reached) {
+      return { x: desiredX, y: desiredY };
+    }
+
+    // PHASE 2: Full movement blocked - try axis decomposition
+    // Calculate how far we got along the diagonal
+    const diagonalProgress = {
+      x: fullResult.lastValidX,
+      y: fullResult.lastValidY
+    };
+
+    // Calculate remaining deltas from last valid diagonal position
+    const remainingDX = desiredX - diagonalProgress.x;
+    const remainingDY = desiredY - diagonalProgress.y;
+
+    // Try X-only movement from last valid diagonal position
+    const xOnlyResult = this.trySweptMovement(
+      block,
+      diagonalProgress.x,
+      diagonalProgress.y,
+      diagonalProgress.x + remainingDX,
+      diagonalProgress.y  // Keep Y constant
+    );
+
+    // Try Y-only movement from last valid diagonal position
+    const yOnlyResult = this.trySweptMovement(
+      block,
+      diagonalProgress.x,
+      diagonalProgress.y,
+      diagonalProgress.x,  // Keep X constant
+      diagonalProgress.y + remainingDY
+    );
+
+    // Calculate total distance gained for each option
+    const xOnlyDistance = Math.abs(xOnlyResult.lastValidX - currentX) +
+                          Math.abs(xOnlyResult.lastValidY - currentY);
+    const yOnlyDistance = Math.abs(yOnlyResult.lastValidX - currentX) +
+                          Math.abs(yOnlyResult.lastValidY - currentY);
+
+    // PHASE 3: Choose the axis that gives most movement
+    if (xOnlyDistance > yOnlyDistance) {
+      // Try X-axis movement, then add any Y movement possible
+      const finalX = xOnlyResult.lastValidX;
+      const finalY = xOnlyResult.lastValidY;
+
+      // After X movement, try adding Y movement
+      const yAfterXResult = this.trySweptMovement(
+        block,
+        finalX,
+        finalY,
+        finalX,
+        finalY + remainingDY
+      );
+
+      return { x: finalX, y: yAfterXResult.lastValidY };
+    } else {
+      // Try Y-axis movement, then add any X movement possible
+      const finalX = yOnlyResult.lastValidX;
+      const finalY = yOnlyResult.lastValidY;
+
+      // After Y movement, try adding X movement
+      const xAfterYResult = this.trySweptMovement(
+        block,
+        finalX,
+        finalY,
+        finalX + remainingDX,
+        finalY
+      );
+
+      return { x: xAfterYResult.lastValidX, y: finalY };
+    }
   }
 
   /**
