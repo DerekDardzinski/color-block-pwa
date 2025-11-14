@@ -141,15 +141,6 @@ export class Block extends Phaser.GameObjects.Container {
     return (r << 16) | (g << 8) | b;
   }
 
-  /**
-   * Get a very light shade for strong highlights
-   */
-  private getHighlightColor(baseColor: number): number {
-    const r = Math.min(255, ((baseColor >> 16) & 0xff) + 80);
-    const g = Math.min(255, ((baseColor >> 8) & 0xff) + 80);
-    const b = Math.min(255, (baseColor & 0xff) + 80);
-    return (r << 16) | (g << 8) | b;
-  }
 
   /**
    * Render the block as a continuous LEGO-style shape
@@ -158,18 +149,17 @@ export class Block extends Phaser.GameObjects.Container {
     this.graphics.clear();
 
     const cellSize = this.cellSize;
-    const cornerRadius = cellSize * 0.2;
+    const cornerRadius = cellSize * 0.12;
     const baseColor = this.getColorValue();
     const studRadius = cellSize * 0.13;
 
-    // Draw layers in order (back to front)
-    this.drawDropShadow();
+    // Draw flat shape and studs
     this.drawContinuousShape(baseColor, cornerRadius);
     this.drawStuds(baseColor, studRadius);
 
     // Add depth to the container if being dragged
     if (this.isDragging) {
-      this.setScale(1.05);
+      this.setScale(1.01);
       this.setDepth(1000);
     } else {
       this.setScale(1);
@@ -185,7 +175,8 @@ export class Block extends Phaser.GameObjects.Container {
     points: { x: number; y: number }[],
     cornerRadius: number,
     offsetX: number = 0,
-    offsetY: number = 0
+    offsetY: number = 0,
+    graphics: Phaser.GameObjects.Graphics = this.graphics
   ): void {
     if (points.length < 3) return;
 
@@ -193,7 +184,7 @@ export class Block extends Phaser.GameObjects.Container {
     const cellMap = new Set(this.shapeOffsets.map(o => `${o.row},${o.col}`));
     const hasCell = (row: number, col: number) => cellMap.has(`${row},${col}`);
 
-    this.graphics.beginPath();
+    graphics.beginPath();
     let isFirstPoint = true;
 
     for (let i = 0; i < points.length - 1; i++) {
@@ -215,10 +206,10 @@ export class Block extends Phaser.GameObjects.Container {
       // Skip interior points (4 cells) or empty points (0 cells)
       if (cellCount === 0 || cellCount === 4) {
         if (isFirstPoint) {
-          this.graphics.moveTo(curr.x + offsetX, curr.y + offsetY);
+          graphics.moveTo(curr.x + offsetX, curr.y + offsetY);
           isFirstPoint = false;
         } else {
-          this.graphics.lineTo(curr.x + offsetX, curr.y + offsetY);
+          graphics.lineTo(curr.x + offsetX, curr.y + offsetY);
         }
         continue;
       }
@@ -262,12 +253,12 @@ export class Block extends Phaser.GameObjects.Container {
         }
 
         if (isFirstPoint) {
-          this.graphics.moveTo(t1x + offsetX, t1y + offsetY);
+          graphics.moveTo(t1x + offsetX, t1y + offsetY);
           isFirstPoint = false;
         } else {
-          this.graphics.lineTo(t1x + offsetX, t1y + offsetY);
+          graphics.lineTo(t1x + offsetX, t1y + offsetY);
         }
-        this.graphics.arc(arcCenterX + offsetX, arcCenterY + offsetY, radius, startAngle, endAngle, false);
+        graphics.arc(arcCenterX + offsetX, arcCenterY + offsetY, radius, startAngle, endAngle, false);
       }
       // CONCAVE CORNERS (3 cells) - inner corners
       else if (cellCount === 3) {
@@ -304,42 +295,27 @@ export class Block extends Phaser.GameObjects.Container {
         }
 
         if (isFirstPoint) {
-          this.graphics.moveTo(t1x + offsetX, t1y + offsetY);
+          graphics.moveTo(t1x + offsetX, t1y + offsetY);
           isFirstPoint = false;
         } else {
-          this.graphics.lineTo(t1x + offsetX, t1y + offsetY);
+          graphics.lineTo(t1x + offsetX, t1y + offsetY);
         }
-        this.graphics.arc(arcCenterX + offsetX, arcCenterY + offsetY, radius, startAngle, endAngle, true);
+        graphics.arc(arcCenterX + offsetX, arcCenterY + offsetY, radius, startAngle, endAngle, true);
       }
       // STRAIGHT EDGES (2 adjacent cells) - just draw line
       else {
         if (isFirstPoint) {
-          this.graphics.moveTo(curr.x + offsetX, curr.y + offsetY);
+          graphics.moveTo(curr.x + offsetX, curr.y + offsetY);
           isFirstPoint = false;
         } else {
-          this.graphics.lineTo(curr.x + offsetX, curr.y + offsetY);
+          graphics.lineTo(curr.x + offsetX, curr.y + offsetY);
         }
       }
     }
 
-    this.graphics.closePath();
+    graphics.closePath();
   }
 
-  /**
-   * Draw drop shadow beneath the block using rounded path
-   */
-  private drawDropShadow(): void {
-    const shadowOffset = 4;
-    const cornerRadius = this.cellSize * 0.15;
-
-    // Build the outer edge path
-    const edgePath = this.buildOuterEdgePath();
-
-    // Draw shadow with offset
-    this.graphics.fillStyle(0x000000, 0.25);
-    this.drawRoundedPath(edgePath, cornerRadius, shadowOffset, shadowOffset);
-    this.graphics.fillPath();
-  }
 
   /**
    * Draw 3D-looking LEGO studs
@@ -347,7 +323,6 @@ export class Block extends Phaser.GameObjects.Container {
   private drawStuds(baseColor: number, studRadius: number): void {
     const cellSize = this.cellSize;
     const lightColor = this.getLighterColor(baseColor);
-    const highlightColor = this.getHighlightColor(baseColor);
     const shadowColor = this.getDarkerColor(baseColor);
 
     this.shapeOffsets.forEach(offset => {
@@ -377,7 +352,7 @@ export class Block extends Phaser.GameObjects.Container {
           this.graphics.fillCircle(studX, studY, studRadius * 0.8);
 
           // Inner highlight (off-center for lighting direction)
-          this.graphics.fillStyle(highlightColor, 1);
+          this.graphics.fillStyle(lightColor, 1);
           this.graphics.fillCircle(studX - studRadius * 0.3, studY - studRadius * 0.3, studRadius * 0.5);
 
           // Bright spot
@@ -388,9 +363,10 @@ export class Block extends Phaser.GameObjects.Container {
     });
   }
 
+
   /**
    * Build the outer edge path for the block shape
-   * Returns an ordered array of points tracing the perimeter clockwise
+   * Returns path points for continuous shape rendering
    */
   private buildOuterEdgePath(): { x: number; y: number }[] {
     const cellSize = this.cellSize;
@@ -403,36 +379,35 @@ export class Block extends Phaser.GameObjects.Container {
       y1: number;
       x2: number;
       y2: number;
-      direction: 'N' | 'E' | 'S' | 'W';
     }
 
     const edges: EdgeSegment[] = [];
 
-    // For each cell, find perimeter edges
+    // For each cell, find perimeter edges (at full size, no inset)
     this.shapeOffsets.forEach(({ row, col }) => {
       const x = col * cellSize;
       const y = row * cellSize;
 
       // Top edge (if no cell above)
       if (!hasCell(row - 1, col)) {
-        edges.push({ x1: x, y1: y, x2: x + cellSize, y2: y, direction: 'N' });
+        edges.push({ x1: x, y1: y, x2: x + cellSize, y2: y });
       }
       // Right edge (if no cell to right)
       if (!hasCell(row, col + 1)) {
-        edges.push({ x1: x + cellSize, y1: y, x2: x + cellSize, y2: y + cellSize, direction: 'E' });
+        edges.push({ x1: x + cellSize, y1: y, x2: x + cellSize, y2: y + cellSize });
       }
       // Bottom edge (if no cell below)
       if (!hasCell(row + 1, col)) {
-        edges.push({ x1: x + cellSize, y1: y + cellSize, x2: x, y2: y + cellSize, direction: 'S' });
+        edges.push({ x1: x + cellSize, y1: y + cellSize, x2: x, y2: y + cellSize });
       }
       // Left edge (if no cell to left)
       if (!hasCell(row, col - 1)) {
-        edges.push({ x1: x, y1: y + cellSize, x2: x, y2: y, direction: 'W' });
+        edges.push({ x1: x, y1: y + cellSize, x2: x, y2: y });
       }
     });
 
     // Build continuous path by connecting edges
-    const path: { x: number; y: number }[] = [];
+    const points: { x: number; y: number }[] = [];
     const visited = new Set<number>();
 
     // Start with the first edge
@@ -440,14 +415,14 @@ export class Block extends Phaser.GameObjects.Container {
 
     let currentEdge = edges[0];
     visited.add(0);
-    path.push({ x: currentEdge.x1, y: currentEdge.y1 });
+    points.push({ x: currentEdge.x1, y: currentEdge.y1 });
 
     // Follow the path by finding connecting edges
     while (visited.size < edges.length) {
       const endX = currentEdge.x2;
       const endY = currentEdge.y2;
 
-      path.push({ x: endX, y: endY });
+      points.push({ x: endX, y: endY });
 
       // Find next edge that starts where current edge ends
       let foundNext = false;
@@ -469,33 +444,111 @@ export class Block extends Phaser.GameObjects.Container {
     }
 
     // Close the polygon by adding the first point at the end
-    if (path.length > 0) {
-      path.push({ x: path[0].x, y: path[0].y });
+    if (points.length > 0) {
+      points.push({ x: points[0].x, y: points[0].y });
     }
 
-    return path;
+    return points;
+  }
+
+
+  /**
+   * Offset a path inward by a given distance using perpendicular normals
+   */
+  private offsetPathInward(points: { x: number; y: number }[], offset: number): { x: number; y: number }[] {
+    if (offset === 0 || points.length < 3) return points;
+
+    const offsetPath: { x: number; y: number }[] = [];
+
+    // For each point (except the duplicate closing point)
+    for (let i = 0; i < points.length - 1; i++) {
+      const prev = points[i === 0 ? points.length - 2 : i - 1];
+      const curr = points[i];
+      const next = points[i + 1];
+
+      // Calculate edge vectors
+      const edge1 = { x: curr.x - prev.x, y: curr.y - prev.y };
+      const edge2 = { x: next.x - curr.x, y: next.y - curr.y };
+
+      // Calculate perpendicular normals (pointing inward for clockwise winding)
+      const normal1 = { x: -edge1.y, y: edge1.x };
+      const normal2 = { x: -edge2.y, y: edge2.x };
+
+      // Normalize normals
+      const len1 = Math.sqrt(normal1.x * normal1.x + normal1.y * normal1.y);
+      const len2 = Math.sqrt(normal2.x * normal2.x + normal2.y * normal2.y);
+      if (len1 > 0) { normal1.x /= len1; normal1.y /= len1; }
+      if (len2 > 0) { normal2.x /= len2; normal2.y /= len2; }
+
+      // Average the normals
+      let offsetX = (normal1.x + normal2.x) / 2;
+      let offsetY = (normal1.y + normal2.y) / 2;
+
+      // Normalize the averaged normal
+      const avgLen = Math.sqrt(offsetX * offsetX + offsetY * offsetY);
+      if (avgLen > 0.001) {
+        offsetX /= avgLen;
+        offsetY /= avgLen;
+
+        // Calculate actual offset distance accounting for corner angle
+        const dotProduct = normal1.x * offsetX + normal1.y * offsetY;
+        const offsetDistance = dotProduct > 0.001 ? offset / dotProduct : offset;
+
+        offsetPath.push({
+          x: curr.x + offsetX * offsetDistance,
+          y: curr.y + offsetY * offsetDistance
+        });
+      } else {
+        offsetPath.push({ x: curr.x, y: curr.y });
+      }
+    }
+
+    // Close the path
+    if (offsetPath.length > 0) {
+      offsetPath.push({ x: offsetPath[0].x, y: offsetPath[0].y });
+    }
+
+    return offsetPath;
+  }
+
+  /**
+   * Draw inset gradient by creating multiple offset paths with progressively lighter colors
+   */
+  private drawInsetGradient(points: { x: number; y: number }[], cornerRadius: number, baseColor: number): void {
+    const gradientDistance = this.cellSize * 0.1;
+    const darkerColor = this.getDarkerColor(baseColor);
+    const numLayers = 6;
+
+    // Draw from outermost (darkest) to innermost (lightest)
+    for (let layer = numLayers; layer > 0; layer--) {
+      const t = layer / numLayers; // 1.0 at edge, approaching 0 at center
+      const insetAmount = gradientDistance * (1 - t);
+      const alpha = t * 0.5; // Fade from 0.5 at edge to 0 at center
+
+      // Offset the path inward
+      const offsetPoints = this.offsetPathInward(points, insetAmount);
+
+      // Draw this layer with appropriate alpha
+      this.graphics.lineStyle(2, darkerColor, alpha);
+      this.drawRoundedPath(offsetPoints, cornerRadius);
+      this.graphics.strokePath();
+    }
   }
 
   /**
    * Draw the shape as a continuous rounded polygon
    */
-  private drawContinuousShape(color: number, _cornerRadius: number): void {
-    const cornerRadius = this.cellSize * 0.15;
-
+  private drawContinuousShape(color: number, cornerRadius: number): void {
     // Build the outer edge path
-    const edgePath = this.buildOuterEdgePath();
+    const points = this.buildOuterEdgePath();
 
-    const lightColor = this.getLighterColor(color);
-
-    // Draw base shape
+    // Draw flat shape with base color
     this.graphics.fillStyle(color, 1);
-    this.drawRoundedPath(edgePath, cornerRadius);
+    this.drawRoundedPath(points, cornerRadius);
     this.graphics.fillPath();
 
-    // Optional: Add subtle edge highlight for 3D effect
-    this.graphics.lineStyle(2, lightColor, 0.2);
-    this.drawRoundedPath(edgePath, cornerRadius);
-    this.graphics.strokePath();
+    // Draw inset gradient for 3D effect
+    this.drawInsetGradient(points, cornerRadius, color);
   }
 
   /**
